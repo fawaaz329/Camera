@@ -83,15 +83,20 @@
     .bottom-left { bottom: -2px; left: -2px; border-width: 0 0 3px 3px; }
     .bottom-right { bottom: -2px; right: -2px; border-width: 0 3px 3px 0; }
 
-    /* Top Bar */
-    .top-bar {
+    /* Top Bar & Banners */
+    .header-area {
       position: relative;
       z-index: 3;
-      padding: 16px 20px;
+      display: flex;
+      flex-direction: column;
+      background: linear-gradient(180deg, rgba(0,0,0,0.75) 0%, transparent 100%);
+    }
+
+    .top-bar {
+      padding: 14px 20px 8px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      background: linear-gradient(180deg, rgba(0,0,0,0.7) 0%, transparent 100%);
     }
 
     .badge {
@@ -111,6 +116,23 @@
       border-color: rgba(0, 229, 255, 0.4);
     }
 
+    /* AI Status Banner */
+    #ai-banner {
+      margin: 0 16px 6px;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      letter-spacing: 0.3px;
+      background: rgba(0, 230, 118, 0.15);
+      border: 1px solid rgba(0, 230, 118, 0.4);
+      color: #69f0ae;
+    }
+
     /* Controls & Bottom UI */
     .bottom-controls {
       position: relative;
@@ -122,6 +144,25 @@
       padding-bottom: env(safe-area-inset-bottom, 16px);
     }
 
+    #processing-indicator {
+      display: none;
+      align-self: center;
+      background: rgba(0, 0, 0, 0.9);
+      border: 1px solid #00e5ff;
+      color: #00e5ff;
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      animation: pulse 1.2s infinite alternate;
+    }
+
+    @keyframes pulse {
+      from { opacity: 0.7; transform: scale(0.97); }
+      to { opacity: 1; transform: scale(1.02); }
+    }
+
     .shutter-row {
       display: flex;
       align-items: center;
@@ -130,6 +171,7 @@
     }
 
     .shutter-btn {
+      position: relative;
       width: 74px;
       height: 74px;
       border-radius: 50%;
@@ -142,7 +184,7 @@
       cursor: pointer;
       outline: none;
       -webkit-tap-highlight-color: transparent;
-      transition: transform 0.08s ease;
+      transition: transform 0.1s ease, opacity 0.2s;
     }
 
     .shutter-btn:active {
@@ -154,6 +196,35 @@
       height: 100%;
       border-radius: 50%;
       background-color: #ffffff;
+      transition: opacity 0.2s;
+    }
+
+    .shutter-btn.loading {
+      pointer-events: none;
+      border-color: rgba(255, 255, 255, 0.4);
+    }
+
+    .shutter-btn.loading .shutter-btn-inner {
+      opacity: 0.15;
+    }
+
+    .shutter-spinner {
+      display: none;
+      position: absolute;
+      width: 32px;
+      height: 32px;
+      border: 3px solid rgba(0, 229, 255, 0.3);
+      border-top-color: #00e5ff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    .shutter-btn.loading .shutter-spinner {
+      display: block;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
     }
 
     /* Gallery Preview Drawer */
@@ -189,14 +260,14 @@
       border-radius: 8px;
       overflow: hidden;
       border: 2px solid rgba(255, 255, 255, 0.3);
-      background: #111;
+      background: #ffffff;
       position: relative;
     }
 
     .thumb-wrap img {
       width: 100%;
       height: 100%;
-      object-fit: cover;
+      object-fit: contain;
       display: block;
     }
 
@@ -212,6 +283,19 @@
       text-align: center;
       border-radius: 4px;
       padding: 1px 0;
+    }
+
+    .thumb-mode-tag {
+      position: absolute;
+      top: 2px;
+      right: 2px;
+      background: rgba(0, 0, 0, 0.7);
+      color: #69f0ae;
+      font-size: 8px;
+      font-weight: 800;
+      padding: 1px 4px;
+      border-radius: 3px;
+      line-height: 1.2;
     }
 
     /* Flash Feedback */
@@ -264,12 +348,19 @@
     </div>
   </div>
 
-  <div class="top-bar">
-    <span class="badge">1000 &times; 1000</span>
-    <span class="badge badge-target">Target: 40KB - 80KB</span>
+  <div class="header-area">
+    <div class="top-bar">
+      <span class="badge">1000 &times; 1000</span>
+      <span class="badge badge-target">Target: 40KB - 80KB</span>
+    </div>
+    <div id="ai-banner">
+      <span>●</span> <span id="ai-banner-text">AI Studio Active (Free On-Device)</span>
+    </div>
   </div>
 
   <div class="bottom-controls">
+    <div id="processing-indicator">Removing Background...</div>
+
     <div class="drawer-container">
       <span class="drawer-label" id="drawer-count">Captured Session (0)</span>
       <div class="gallery-drawer" id="gallery-drawer"></div>
@@ -278,6 +369,7 @@
     <div class="shutter-row">
       <button class="shutter-btn" id="shutter-trigger" aria-label="Capture Photo">
         <div class="shutter-btn-inner"></div>
+        <div class="shutter-spinner"></div>
       </button>
     </div>
   </div>
@@ -285,18 +377,23 @@
   <div id="flash-overlay"></div>
 
   <div id="error-modal">
-    <h3 id="error-title">Error</h3>
+    <h3 id="error-title">Notice</h3>
     <p id="error-desc"></p>
   </div>
 </div>
 
-<script>
+<!-- On-Device Open-Source AI Engine (Zero API Keys) -->
+<script type="module">
+  import imglyRemoveBackground, { preload } from "https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.7/+esm";
+
   (function () {
     const video = document.getElementById('camera-stream');
     const shutterBtn = document.getElementById('shutter-trigger');
     const galleryDrawer = document.getElementById('gallery-drawer');
     const drawerCount = document.getElementById('drawer-count');
     const flashOverlay = document.getElementById('flash-overlay');
+    const aiBannerText = document.getElementById('ai-banner-text');
+    const processingIndicator = document.getElementById('processing-indicator');
     const errorModal = document.getElementById('error-modal');
     const errorTitle = document.getElementById('error-title');
     const errorDesc = document.getElementById('error-desc');
@@ -304,12 +401,20 @@
     let captureCount = 0;
     let isProcessing = false;
 
+    // Pre-warm the lightweight model in background on startup
+    try {
+      preload({ model: 'small' }).then(() => {
+        aiBannerText.textContent = 'AI Studio Ready (Free On-Device)';
+      }).catch(() => {});
+    } catch (e) {}
+
     function showError(title, message) {
       errorTitle.innerHTML = title;
       errorDesc.innerHTML = message;
       errorModal.style.display = 'block';
     }
 
+    // Initialize Android Back Camera
     async function initCamera() {
       const constraints = {
         audio: false,
@@ -336,23 +441,56 @@
       }
     }
 
-    // Helper to get a Blob promise for a specific quality
+    // Amazon Pure White + Baseline Studio Shadow
+    async function composeStudioShot(isolatedBlob) {
+      const studioCanvas = document.createElement('canvas');
+      studioCanvas.width = 1000;
+      studioCanvas.height = 1000;
+      const sCtx = studioCanvas.getContext('2d');
+
+      // 1. Pure Amazon studio white (#FFFFFF)
+      sCtx.fillStyle = '#FFFFFF';
+      sCtx.fillRect(0, 0, 1000, 1000);
+
+      // Load cutout
+      const img = await new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = reject;
+        image.src = URL.createObjectURL(isolatedBlob);
+      });
+
+      // 2. Soft, organic e-commerce drop shadow on baseline
+      sCtx.save();
+      sCtx.shadowColor = 'rgba(0, 0, 0, 0.14)';
+      sCtx.shadowBlur = 24;
+      sCtx.shadowOffsetY = 16;
+      sCtx.shadowOffsetX = 0;
+
+      sCtx.drawImage(img, 0, 0, 1000, 1000);
+      sCtx.restore();
+
+      // 3. Paint product second time to keep sharp foreground textures
+      sCtx.drawImage(img, 0, 0, 1000, 1000);
+
+      return studioCanvas;
+    }
+
+    // Binary search compression loop to hit 40KB - 80KB target
     function canvasToBlobAsync(canvas, quality) {
       return new Promise((resolve) => {
         canvas.toBlob((blob) => resolve(blob), 'image/jpeg', quality);
       });
     }
 
-    // Binary search compression loop to hit 40KB - 80KB target
     async function compressToTarget(canvas, minKB = 40, maxKB = 80) {
       const minBytes = minKB * 1024;
       const maxBytes = maxKB * 1024;
 
       let low = 0.05;
-      let high = 0.90;
+      let high = 0.92;
       let bestBlob = null;
 
-      // 6 quick iterations dial in the file size
       for (let i = 0; i < 6; i++) {
         const testQuality = (low + high) / 2;
         const blob = await canvasToBlobAsync(canvas, testQuality);
@@ -360,18 +498,16 @@
 
         bestBlob = blob;
 
-        // If inside 40KB - 80KB range, stop immediately
         if (blob.size >= minBytes && blob.size <= maxBytes) {
-          return blob;
+          return blob; // In 40KB - 80KB window
         }
 
         if (blob.size > maxBytes) {
-          high = testQuality; // Too large -> reduce quality
+          high = testQuality;
         } else {
-          low = testQuality;  // Too small -> increase quality
+          low = testQuality;
         }
       }
-
       return bestBlob;
     }
 
@@ -379,55 +515,86 @@
       if (isProcessing || !video.videoWidth || !video.videoHeight) return;
       isProcessing = true;
 
-      // Haptic feedback & flash
+      // Haptic feedback & flash animation
       if (navigator.vibrate) navigator.vibrate(40);
       flashOverlay.style.opacity = '0.9';
       setTimeout(() => { flashOverlay.style.opacity = '0'; }, 120);
 
-      // 1. Off-screen canvas locked at 1000x1000
-      const canvas = document.createElement('canvas');
-      canvas.width = 1000;
-      canvas.height = 1000;
-      const ctx = canvas.getContext('2d', { alpha: false });
+      // UI loading state
+      shutterBtn.classList.add('loading');
+      processingIndicator.style.display = 'block';
+      processingIndicator.textContent = 'Isolating Product...';
 
-      // 2. Exact 1:1 Center Crop
-      const vw = video.videoWidth;
-      const vh = video.videoHeight;
-      const cropSize = Math.min(vw, vh);
-      const sx = (vw - cropSize) / 2;
-      const sy = (vh - cropSize) / 2;
+      try {
+        // Step 1: 1000x1000 Center Crop
+        const rawCanvas = document.createElement('canvas');
+        rawCanvas.width = 1000;
+        rawCanvas.height = 1000;
+        const rawCtx = rawCanvas.getContext('2d', { alpha: false });
 
-      ctx.drawImage(video, sx, sy, cropSize, cropSize, 0, 0, 1000, 1000);
+        const vw = video.videoWidth;
+        const vh = video.videoHeight;
+        const cropSize = Math.min(vw, vh);
+        const sx = (vw - cropSize) / 2;
+        const sy = (vh - cropSize) / 2;
 
-      // 3. Auto-compress strictly between 40KB and 80KB
-      const blob = await compressToTarget(canvas, 40, 80);
-      if (!blob) {
+        rawCtx.drawImage(video, sx, sy, cropSize, cropSize, 0, 0, 1000, 1000);
+
+        let finalCanvas = rawCanvas;
+        let isIsolated = false;
+
+        // Step 2: On-Device AI Background Removal
+        try {
+          const rawPngBlob = await new Promise(res => rawCanvas.toBlob(res, 'image/png'));
+
+          const isolatedBlob = await imglyRemoveBackground(rawPngBlob, {
+            model: 'small',
+            progress: (key, current, total) => {
+              if (total > 0) {
+                const pct = Math.round((current / total) * 100);
+                processingIndicator.textContent = `Processing: ${pct}%`;
+              }
+            }
+          });
+
+          // Compose onto Amazon White + Shadow
+          finalCanvas = await composeStudioShot(isolatedBlob);
+          isIsolated = true;
+        } catch (aiErr) {
+          console.warn('AI isolation fallback to raw frame:', aiErr);
+          finalCanvas = rawCanvas;
+        }
+
+        // Step 3: Compress strictly between 40KB and 80KB
+        const blob = await compressToTarget(finalCanvas, 40, 80);
+        if (!blob) return;
+
+        const sizeInKB = Math.round(blob.size / 1024);
+
+        // Step 4: Silent Download
+        const now = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const filename = `prod_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.jpg`;
+
+        const objectUrl = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = objectUrl;
+        anchor.download = filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+
+        // Step 5: Append to Gallery Drawer
+        appendThumbnail(objectUrl, filename, sizeInKB, isIsolated);
+
+      } finally {
+        shutterBtn.classList.remove('loading');
+        processingIndicator.style.display = 'none';
         isProcessing = false;
-        return;
       }
-
-      const sizeInKB = Math.round(blob.size / 1024);
-
-      // 4. Clean timestamp filename
-      const now = new Date();
-      const pad = (n) => String(n).padStart(2, '0');
-      const filename = `prod_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.jpg`;
-
-      // 5. Silent Download
-      const objectUrl = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      anchor.href = objectUrl;
-      anchor.download = filename;
-      document.body.appendChild(anchor);
-      anchor.click();
-      document.body.removeChild(anchor);
-
-      // 6. Push to drawer with size badge
-      appendThumbnail(objectUrl, filename, sizeInKB);
-      isProcessing = false;
     }
 
-    function appendThumbnail(url, title, sizeInKB) {
+    function appendThumbnail(url, title, sizeInKB, isIsolated) {
       captureCount++;
       drawerCount.textContent = `Captured Session (${captureCount})`;
 
@@ -438,12 +605,19 @@
       img.src = url;
       img.alt = title;
 
-      const tag = document.createElement('div');
-      tag.className = 'thumb-size-tag';
-      tag.textContent = `${sizeInKB} KB`;
+      const sizeTag = document.createElement('div');
+      sizeTag.className = 'thumb-size-tag';
+      sizeTag.textContent = `${sizeInKB} KB`;
+
+      if (isIsolated) {
+        const modeTag = document.createElement('div');
+        modeTag.className = 'thumb-mode-tag';
+        modeTag.textContent = 'WHITE';
+        wrap.appendChild(modeTag);
+      }
 
       wrap.appendChild(img);
-      wrap.appendChild(tag);
+      wrap.appendChild(sizeTag);
       galleryDrawer.prepend(wrap);
     }
 
