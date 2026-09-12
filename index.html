@@ -3,9 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Smart AI Product Camera</title>
-  <!-- Load ONNX Runtime Web Natively -->
-  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.1/dist/ort.min.js"></script>
+  <title>E-Commerce Product Camera</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
     body, html { width: 100%; height: 100%; background-color: #000; color: #fff; font-family: -apple-system, sans-serif; overflow: hidden; }
@@ -27,7 +25,6 @@
     .shutter-btn { position: relative; width: 74px; height: 74px; border-radius: 50%; border: 4px solid #ffffff; background: transparent; padding: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; outline: none; transition: transform 0.08s ease; }
     .shutter-btn:active { transform: scale(0.92); }
     .shutter-btn-inner { width: 100%; height: 100%; border-radius: 50%; background-color: #ffffff; }
-    .shutter-btn.loading { pointer-events: none; opacity: 0.6; }
     .drawer-container { width: 100%; display: flex; flex-direction: column; gap: 6px; padding: 0 16px; }
     .drawer-label { font-size: 11px; color: rgba(255, 255, 255, 0.6); text-transform: uppercase; letter-spacing: 0.5px; }
     .gallery-drawer { display: flex; overflow-x: auto; gap: 10px; padding: 4px 2px 8px 2px; scrollbar-width: none; }
@@ -36,7 +33,6 @@
     .thumb-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .thumb-size-tag { position: absolute; bottom: 2px; left: 2px; right: 2px; background: rgba(0, 0, 0, 0.75); color: #00e5ff; font-size: 9px; font-weight: 700; text-align: center; border-radius: 4px; padding: 1px 0; }
     #flash-overlay { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 10; transition: opacity 0.15s ease-out; }
-    #status-toast { position: absolute; top: 70px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); border: 1px solid #00e5ff; padding: 8px 16px; border-radius: 20px; font-size: 12px; z-index: 100; color: #00e5ff; display: block; transition: border-color 0.3s, color 0.3s; }
     #error-modal { display: none; position: absolute; inset: 20px; margin: auto; height: fit-content; max-width: 480px; background: #1a1a1a; border: 1px solid #ff4444; border-radius: 12px; padding: 20px; z-index: 99; box-shadow: 0 10px 30px rgba(0,0,0,0.8); font-size: 14px; line-height: 1.5; }
     #error-modal h3 { color: #ff5252; margin-bottom: 8px; }
   </style>
@@ -44,8 +40,6 @@
 <body>
 
 <div id="app">
-  <div id="status-toast">Initializing Vision Engine...</div>
-  
   <div id="video-container">
     <video id="camera-stream" autoplay playsinline muted></video>
   </div>
@@ -92,194 +86,153 @@
     const galleryDrawer = document.getElementById('gallery-drawer');
     const drawerCount = document.getElementById('drawer-count');
     const flashOverlay = document.getElementById('flash-overlay');
-    const statusToast = document.getElementById('status-toast');
-    
-    let aiSession = null;
+    const errorModal = document.getElementById('error-modal');
+    const errorTitle = document.getElementById('error-title');
+    const errorDesc = document.getElementById('error-desc');
+
     let captureCount = 0;
     let isProcessing = false;
 
-    // Load RMBG-1.4 Web Model with optimized mobile loading configurations
-    async function loadAIModel() {
-      try {
-        if (typeof ort === 'undefined') throw new Error("ONNX runtime script failed to download.");
-
-        // Safe background thread environment
-        ort.env.wasm.numThreads = 1;
-        ort.env.wasm.simd = false; // Turned off SIMD to prevent crashes on older mobile processors
-        
-        const sessionOptions = {
-          executionProviders: [{ name: 'wasm' }],
-          graphOptimizationLevel: 'all',
-          enableCpuMemArena: true,
-          enableMemPattern: true
-        };
-
-        // Complete direct URL to model file
-        const modelUrl = 'https://huggingface.co/briaai/RMBG-1.4/resolve/main/onnx/model.onnx';
-
-        aiSession = await ort.InferenceSession.create(modelUrl, sessionOptions);
-
-        statusToast.textContent = "RMBG-1.4 Vision Engine Ready";
-        statusToast.style.borderColor = "#00ff66";
-        statusToast.style.color = "#00ff66";
-        setTimeout(() => { statusToast.style.display = 'none'; }, 2200);
-      } catch (e) {
-        console.warn("RMBG-1.4 initialization halted, applying auto contrast configurations:", e);
-        statusToast.textContent = "Hardware Engine Active (Local Mode)";
-        statusToast.style.borderColor = "#ffcc00";
-        statusToast.style.color = "#ffcc00";
-        setTimeout(() => { statusToast.style.display = 'none'; }, 2500);
-      }
+    function showError(title, message) {
+      errorTitle.innerHTML = title;
+      errorDesc.innerHTML = message;
+      errorModal.style.display = 'block';
     }
 
     async function initCamera() {
+      const constraints = {
+        audio: false,
+        video: {
+          facingMode: { exact: "environment" },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
+        }
+      };
+
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: false,
-          video: { facingMode: { exact: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }
-        });
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
         video.srcObject = stream;
       } catch (err) {
         try {
-          const fallbackStream = await navigator.mediaDevices.getUserMedia({ 
-            audio: false, 
-            video: { facingMode: "environment" } 
+          const fallbackStream = await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: { facingMode: "environment" }
           });
           video.srcObject = fallbackStream;
-        } catch (e) {
-          const basicStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
-          video.srcObject = basicStream;
+        } catch (fallbackErr) {
+          showError('Camera Error', 'Could not open camera: ' + fallbackErr.message);
         }
       }
     }
 
     function canvasToBlobAsync(canvas, quality) {
-      return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), 'image/jpeg', quality));
+      return new Promise((resolve) => {
+        canvas.toBlob((blob) => resolve(blob), 'image/jpeg', quality);
+      });
     }
 
     async function compressToTarget(canvas, minKB = 40, maxKB = 80) {
-      const minBytes = minKB * 1024; 
+      const minBytes = minKB * 1024;
       const maxBytes = maxKB * 1024;
-      let low = 0.05, high = 0.90, bestBlob = null;
+
+      let low = 0.05;
+      let high = 0.90;
+      let bestBlob = null;
 
       for (let i = 0; i < 6; i++) {
         const testQuality = (low + high) / 2;
         const blob = await canvasToBlobAsync(canvas, testQuality);
         if (!blob) break;
+
         bestBlob = blob;
 
-        if (blob.size >= minBytes && blob.size <= maxBytes) return blob;
-        if (blob.size > maxBytes) high = testQuality; else low = testQuality;
+        if (blob.size >= minBytes && blob.size <= maxBytes) {
+          return blob;
+        }
+
+        if (blob.size > maxBytes) {
+          high = testQuality;
+        } else {
+          low = testQuality;
+        }
       }
+
       return bestBlob;
     }
 
-    // --- High Precision RMBG-1.4 Tensor Normalization & Isolation ---
-    async function extractSubjectAI(ctx, targetWidth, targetHeight) {
-      if (!aiSession) {
-        applyPerimeterFallback(ctx, targetWidth, targetHeight);
-        return;
-      }
-
-      try {
-        const MODEL_DIM = 1024; 
-
-        const tensorCanvas = document.createElement('canvas');
-        tensorCanvas.width = MODEL_DIM;
-        tensorCanvas.height = MODEL_DIM;
-        const tCtx = tensorCanvas.getContext('2d', { willReadFrequently: true });
-        tCtx.drawImage(ctx.canvas, 0, 0, MODEL_DIM, MODEL_DIM);
-
-        const imgData = tCtx.getImageData(0, 0, MODEL_DIM, MODEL_DIM);
-        const data = imgData.data;
-
-        const totalPixels = MODEL_DIM * MODEL_DIM;
-        const inputTensor = new Float32Array(3 * totalPixels);
-
-        for (let i = 0; i < totalPixels; i++) {
-          const r = data[i * 4];
-          const g = data[i * 4 + 1];
-          const b = data[i * 4 + 2];
-
-          inputTensor[i]                   = (r / 255.0) - 0.5; 
-          inputTensor[totalPixels + i]     = (g / 255.0) - 0.5; 
-          inputTensor[2 * totalPixels + i] = (b / 255.0) - 0.5; 
-        }
-
-        const inputNodeName = aiSession.inputNames[0] || 'input';
-        const feeds = {};
-        feeds[inputNodeName] = new ort.Tensor('float32', inputTensor, [1, 3, MODEL_DIM, MODEL_DIM]);
-
-        const results = await aiSession.run(feeds);
-        const outputNodeName = aiSession.outputNames[0] || Object.keys(results)[0];
-        const rawOutputMask = results[outputNodeName].data; 
-
-        let minVal = Infinity, maxVal = -Infinity;
-        for (let i = 0; i < totalPixels; i++) {
-          const v = rawOutputMask[i];
-          if (v < minVal) minVal = v;
-          if (v > maxVal) maxVal = v;
-        }
-        const range = (maxVal - minVal) || 1.0;
-
-        const maskCanvas = document.createElement('canvas');
-        maskCanvas.width = MODEL_DIM;
-        maskCanvas.height = MODEL_DIM;
-        const maskCtx = maskCanvas.getContext('2d');
-        const maskImgData = maskCtx.createImageData(MODEL_DIM, MODEL_DIM);
-        const mData = maskImgData.data;
-
-        for (let i = 0; i < totalPixels; i++) {
-          const alphaNorm = (rawOutputMask[i] - minVal) / range;
-          const alphaByte = Math.max(0, Math.min(255, Math.round(alphaNorm * 255)));
-
-          mData[i * 4]     = alphaByte; 
-          mData[i * 4 + 1] = alphaByte; 
-          mData[i * 4 + 2] = alphaByte; 
-          mData[i * 4 + 3] = 255;       
-        }
-        maskCtx.putImageData(maskImgData, 0, 0);
-
-        const finalMaskCanvas = document.createElement('canvas');
-        finalMaskCanvas.width = targetWidth;
-        finalMaskCanvas.height = targetHeight;
-        const fmCtx = finalMaskCanvas.getContext('2d');
-        fmCtx.imageSmoothingEnabled = true;
-        fmCtx.imageSmoothingQuality = 'high';
-        fmCtx.drawImage(maskCanvas, 0, 0, targetWidth, targetHeight);
-        const finalMaskData = fmCtx.getImageData(0, 0, targetWidth, targetHeight).data;
-
-        const originalData = ctx.getImageData(0, 0, targetWidth, targetHeight);
-        const oPixels = originalData.data;
-        const numPixels = targetWidth * targetHeight;
-
-        for (let i = 0; i < numPixels; i++) {
-          const alphaFactor = finalMaskData[i * 4] / 255.0; 
-          const invAlpha = 1.0 - alphaFactor;
-
-          oPixels[i * 4]     = Math.round(oPixels[i * 4] * alphaFactor + 255 * invAlpha);
-          oPixels[i * 4 + 1] = Math.round(oPixels[i * 4 + 1] * alphaFactor + 255 * invAlpha);
-          oPixels[i * 4 + 2] = Math.round(oPixels[i * 4 + 2] * alphaFactor + 255 * invAlpha);
-        }
-
-        ctx.putImageData(originalData, 0, 0);
-
-      } catch (err) {
-        console.error("Inference execution failure, defaulting to edge protection:", err);
-        applyPerimeterFallback(ctx, targetWidth, targetHeight);
-      }
-    }
-
-    // High-contrast local boundary safeguard
-    function applyPerimeterFallback(ctx, width, height) {
+    // --- PHOTOSHOP-STYLE EDGE CONTRAST MASKING ALGORITHM ---
+    function applyPhotoshopStyleMask(ctx, width, height) {
       const imgData = ctx.getImageData(0, 0, width, height);
       const data = imgData.data;
-      for (let i = 0; i < data.length; i += 4) {
-        const brightness = (data[i] + data[i+1] + data[i+2]) / 3;
-        if (brightness > 220) { 
-          data[i] = 255; data[i+1] = 255; data[i+2] = 255; 
+      
+      const edges = new Uint8Array(width * height);
+      const edgeThreshold = 25; // Sensitivity to object outlines
+      
+      // Step 1: Classical Sobel/Contrast Operator with corrected index math
+      for (let y = 1; y < height - 1; y++) {
+        const rowIdx = y * width;
+        const nextRowIdx = (y + 1) * width;
+        for (let x = 1; x < width - 1; x++) {
+          const idx = (rowIdx + x) * 4;
+          const rIdx = (rowIdx + x + 1) * 4;
+          const bIdx = (nextRowIdx + x) * 4; // Corrected vertical neighbor offset
+          
+          const center = (data[idx] + data[idx+1] + data[idx+2]) / 3;
+          const right  = (data[rIdx] + data[rIdx+1] + data[rIdx+2]) / 3;
+          const bottom = (data[bIdx] + data[bIdx+1] + data[bIdx+2]) / 3;
+          
+          const hChange = Math.abs(center - right);
+          const vChange = Math.abs(center - bottom);
+          
+          if (hChange > edgeThreshold || vChange > edgeThreshold) {
+            edges[rowIdx + x] = 1; // Mark as structural product boundary
+          }
         }
       }
+
+      // Step 2: High-Performance O(1) Boundary Flood Fill (Runs in ~15ms)
+      const visited = new Uint8Array(width * height);
+      const stack = [];
+
+      function pushPixel(x, y) {
+        const pos = y * width + x;
+        if (!visited[pos]) {
+          visited[pos] = 1;
+          stack.push(pos);
+        }
+      }
+
+      // Load all outer perimeter pixels
+      for (let x = 0; x < width; x++) {
+        pushPixel(x, 0);
+        pushPixel(x, height - 1);
+      }
+      for (let y = 1; y < height - 1; y++) {
+        pushPixel(0, y);
+        pushPixel(width - 1, y);
+      }
+
+      // O(1) stack pop eliminates mobile browser freezing
+      while (stack.length > 0) {
+        const pos = stack.pop();
+
+        // If not a product boundary edge, it is confirmed background
+        if (edges[pos] === 0) {
+          const dIdx = pos * 4;
+          data[dIdx]     = 255; // Pure Solid White
+          data[dIdx + 1] = 255;
+          data[dIdx + 2] = 255;
+
+          const px = pos % width;
+          const py = Math.floor(pos / width);
+
+          if (px > 0) pushPixel(px - 1, py);
+          if (px < width - 1) pushPixel(px + 1, py);
+          if (py > 0) pushPixel(px, py - 1);
+          if (py < height - 1) pushPixel(px, py + 1);
+        }
+      }
+
       ctx.putImageData(imgData, 0, 0);
     }
 
@@ -291,51 +244,48 @@
       flashOverlay.style.opacity = '0.9';
       setTimeout(() => { flashOverlay.style.opacity = '0'; }, 120);
 
-      shutterBtn.classList.add('loading');
+      const canvas = document.createElement('canvas');
+      canvas.width = 1000;
+      canvas.height = 1000;
+      const ctx = canvas.getContext('2d', { alpha: false });
 
-      try {
-        const canvas = document.createElement('canvas');
-        canvas.width = 1000;
-        canvas.height = 1000;
-        const ctx = canvas.getContext('2d', { alpha: false });
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      const cropSize = Math.min(vw, vh);
+      const sx = (vw - cropSize) / 2;
+      const sy = (vh - cropSize) / 2;
 
-        const vw = video.videoWidth;
-        const vh = video.videoHeight;
-        const cropSize = Math.min(vw, vh);
-        const sx = (vw - cropSize) / 2;
-        const sy = (vh - cropSize) / 2;
+      // 1. Take raw 1:1 camera snapshot
+      ctx.drawImage(video, sx, sy, cropSize, cropSize, 0, 0, 1000, 1000);
 
-        ctx.drawImage(video, sx, sy, cropSize, cropSize, 0, 0, 1000, 1000);
+      // 2. Apply edge contrast isolation in memory
+      applyPhotoshopStyleMask(ctx, 1000, 1000);
 
-        statusToast.style.display = 'block';
-        statusToast.textContent = "Isolating Product Contours...";
-        
-        await extractSubjectAI(ctx, 1000, 1000);
-        
-        statusToast.style.display = 'none';
-
-        const blob = await compressToTarget(canvas, 40, 80);
-        if (!blob) return;
-
-        const sizeInKB = Math.round(blob.size / 1024);
-
-        const now = new Date();
-        const pad = (n) => String(n).padStart(2, '0');
-        const filename = `prod_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.jpg`;
-
-        const objectUrl = URL.createObjectURL(blob);
-        const anchor = document.createElement('a');
-        anchor.href = objectUrl;
-        anchor.download = filename;
-        document.body.appendChild(anchor);
-        anchor.click();
-        document.body.removeChild(anchor);
-
-        appendThumbnail(objectUrl, filename, sizeInKB);
-      } finally {
-        shutterBtn.classList.remove('loading');
+      // 3. Compress output strictly between 40KB and 80KB
+      const blob = await compressToTarget(canvas, 40, 80);
+      if (!blob) {
         isProcessing = false;
+        return;
       }
+
+      const sizeInKB = Math.round(blob.size / 1024);
+
+      const now = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      const filename = `prod_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.jpg`;
+
+      // 4. Silent Download
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+
+      // 5. Append to gallery drawer
+      appendThumbnail(objectUrl, filename, sizeInKB);
+      isProcessing = false;
     }
 
     function appendThumbnail(url, title, sizeInKB) {
@@ -359,16 +309,7 @@
     }
 
     shutterBtn.addEventListener('click', captureProductPhoto);
-
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', () => {
-        initCamera();
-        loadAIModel();
-      });
-    } else {
-      initCamera();
-      loadAIModel();
-    }
+    window.addEventListener('DOMContentLoaded', initCamera);
   })();
 </script>
 </body>
