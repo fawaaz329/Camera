@@ -50,7 +50,7 @@
       object-fit: cover;
     }
 
-    /* Square Frame Overlay System */
+    /* Square Frame Overlay */
     #overlay-mask {
       position: absolute;
       inset: 0;
@@ -63,15 +63,13 @@
 
     .reticle-box {
       width: 82vw;
-      max-width: 420px;
+      max-width: 400px;
       aspect-ratio: 1 / 1;
       position: relative;
-      /* Dim outside bounds using an expansive box shadow */
       box-shadow: 0 0 0 4000px rgba(0, 0, 0, 0.65);
       border-radius: 4px;
     }
 
-    /* Corner Accent Guides */
     .corner {
       position: absolute;
       width: 22px;
@@ -108,13 +106,18 @@
       border: 1px solid rgba(255, 255, 255, 0.2);
     }
 
+    .badge-target {
+      color: #00e5ff;
+      border-color: rgba(0, 229, 255, 0.4);
+    }
+
     /* Controls & Bottom UI */
     .bottom-controls {
       position: relative;
       z-index: 3;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 10px;
       background: linear-gradient(0deg, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 70%, transparent 100%);
       padding-bottom: env(safe-area-inset-bottom, 16px);
     }
@@ -173,16 +176,16 @@
       display: flex;
       overflow-x: auto;
       gap: 10px;
-      padding: 6px 2px 10px 2px;
-      scrollbar-width: none; /* Firefox */
+      padding: 4px 2px 8px 2px;
+      scrollbar-width: none;
     }
     .gallery-drawer::-webkit-scrollbar {
-      display: none; /* Chrome/Safari */
+      display: none;
     }
 
     .thumb-wrap {
-      flex: 0 0 62px;
-      height: 62px;
+      flex: 0 0 68px;
+      height: 68px;
       border-radius: 8px;
       overflow: hidden;
       border: 2px solid rgba(255, 255, 255, 0.3);
@@ -197,7 +200,21 @@
       display: block;
     }
 
-    /* Flash UI Animation */
+    .thumb-size-tag {
+      position: absolute;
+      bottom: 2px;
+      left: 2px;
+      right: 2px;
+      background: rgba(0, 0, 0, 0.75);
+      color: #00e5ff;
+      font-size: 9px;
+      font-weight: 700;
+      text-align: center;
+      border-radius: 4px;
+      padding: 1px 0;
+    }
+
+    /* Flash Feedback */
     #flash-overlay {
       position: absolute;
       inset: 0;
@@ -208,7 +225,7 @@
       transition: opacity 0.15s ease-out;
     }
 
-    /* Context Error Banner (Local file protocol / Insecure) */
+    /* Error Notification */
     #error-modal {
       display: none;
       position: absolute;
@@ -234,12 +251,10 @@
 <body>
 
 <div id="app">
-  <!-- Camera Feed -->
   <div id="video-container">
     <video id="camera-stream" autoplay playsinline muted></video>
   </div>
 
-  <!-- Square Viewfinder Overlay -->
   <div id="overlay-mask">
     <div class="reticle-box">
       <span class="corner top-left"></span>
@@ -249,21 +264,17 @@
     </div>
   </div>
 
-  <!-- Header Info -->
   <div class="top-bar">
-    <span class="badge">1:1 Square</span>
-    <span class="badge" id="res-badge">1000 &times; 1000</span>
+    <span class="badge">1000 &times; 1000</span>
+    <span class="badge badge-target">Target: 40KB - 80KB</span>
   </div>
 
-  <!-- Bottom Interaction Panel -->
   <div class="bottom-controls">
-    <!-- Horizontal Gallery Drawer -->
     <div class="drawer-container">
       <span class="drawer-label" id="drawer-count">Captured Session (0)</span>
       <div class="gallery-drawer" id="gallery-drawer"></div>
     </div>
 
-    <!-- Shutter Button -->
     <div class="shutter-row">
       <button class="shutter-btn" id="shutter-trigger" aria-label="Capture Photo">
         <div class="shutter-btn-inner"></div>
@@ -271,12 +282,10 @@
     </div>
   </div>
 
-  <!-- Flash Screen Feedback -->
   <div id="flash-overlay"></div>
 
-  <!-- Context / Permission Notice -->
   <div id="error-modal">
-    <h3 id="error-title">Camera Security Error</h3>
+    <h3 id="error-title">Error</h3>
     <p id="error-desc"></p>
   </div>
 </div>
@@ -293,25 +302,7 @@
     const errorDesc = document.getElementById('error-desc');
 
     let captureCount = 0;
-
-    // Verify context (Android Chrome blocks camera on file:// or non-localhost HTTP)
-    function checkSecurityContext() {
-      if (window.location.protocol === 'file:') {
-        showError(
-          'Local File Protocol Blocked',
-          'Android Chrome disables camera access when opening files directly via <b>file:///</b>. Run a local web server (e.g. <code>python3 -m http.server 8080</code> or GitHub Pages) and open via <b>http://localhost</b> or <b>HTTPS</b>.'
-        );
-        return false;
-      }
-      if (!window.isSecureContext) {
-        showError(
-          'Insecure Context',
-          'Camera APIs require a secure origin (HTTPS or localhost). Please switch to an encrypted connection.'
-        );
-        return false;
-      }
-      return true;
-    }
+    let isProcessing = false;
 
     function showError(title, message) {
       errorTitle.innerHTML = title;
@@ -319,10 +310,7 @@
       errorModal.style.display = 'block';
     }
 
-    // Initialize Camera targeting rear sensor
     async function initCamera() {
-      if (!checkSecurityContext()) return;
-
       const constraints = {
         audio: false,
         video: {
@@ -336,8 +324,6 @@
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
         video.srcObject = stream;
       } catch (err) {
-        console.warn("Exact environment camera query failed, trying standard fallback...", err);
-        // Fallback in case device doesn't support 'exact' constraint
         try {
           const fallbackStream = await navigator.mediaDevices.getUserMedia({
             audio: false,
@@ -345,70 +331,103 @@
           });
           video.srcObject = fallbackStream;
         } catch (fallbackErr) {
-          showError(
-            'Camera Access Denied',
-            'Could not access the rear camera. Ensure camera permissions are granted in Chrome settings. Details: ' + fallbackErr.message
-          );
+          showError('Camera Error', 'Could not open camera: ' + fallbackErr.message);
         }
       }
     }
 
-    // Capture, Center-Crop to 1000x1000, and Process
-    function captureProductPhoto() {
-      if (!video.videoWidth || !video.videoHeight) return;
+    // Helper to get a Blob promise for a specific quality
+    function canvasToBlobAsync(canvas, quality) {
+      return new Promise((resolve) => {
+        canvas.toBlob((blob) => resolve(blob), 'image/jpeg', quality);
+      });
+    }
 
-      // Haptic confirmation
+    // Binary search compression loop to hit 40KB - 80KB target
+    async function compressToTarget(canvas, minKB = 40, maxKB = 80) {
+      const minBytes = minKB * 1024;
+      const maxBytes = maxKB * 1024;
+
+      let low = 0.05;
+      let high = 0.90;
+      let bestBlob = null;
+
+      // 6 quick iterations dial in the file size
+      for (let i = 0; i < 6; i++) {
+        const testQuality = (low + high) / 2;
+        const blob = await canvasToBlobAsync(canvas, testQuality);
+        if (!blob) break;
+
+        bestBlob = blob;
+
+        // If inside 40KB - 80KB range, stop immediately
+        if (blob.size >= minBytes && blob.size <= maxBytes) {
+          return blob;
+        }
+
+        if (blob.size > maxBytes) {
+          high = testQuality; // Too large -> reduce quality
+        } else {
+          low = testQuality;  // Too small -> increase quality
+        }
+      }
+
+      return bestBlob;
+    }
+
+    async function captureProductPhoto() {
+      if (isProcessing || !video.videoWidth || !video.videoHeight) return;
+      isProcessing = true;
+
+      // Haptic feedback & flash
       if (navigator.vibrate) navigator.vibrate(40);
-
-      // Flash feedback
       flashOverlay.style.opacity = '0.9';
       setTimeout(() => { flashOverlay.style.opacity = '0'; }, 120);
 
-      // 1. Setup off-screen canvas locked at 1000x1000
+      // 1. Off-screen canvas locked at 1000x1000
       const canvas = document.createElement('canvas');
       canvas.width = 1000;
       canvas.height = 1000;
       const ctx = canvas.getContext('2d', { alpha: false });
 
-      // 2. Compute 1:1 Center Crop coordinates from video resolution
+      // 2. Exact 1:1 Center Crop
       const vw = video.videoWidth;
       const vh = video.videoHeight;
       const cropSize = Math.min(vw, vh);
       const sx = (vw - cropSize) / 2;
       const sy = (vh - cropSize) / 2;
 
-      // 3. Render cropped region
       ctx.drawImage(video, sx, sy, cropSize, cropSize, 0, 0, 1000, 1000);
 
-      // 4. Compress to JPEG @ 0.85 quality
-      canvas.toBlob((blob) => {
-        if (!blob) return;
+      // 3. Auto-compress strictly between 40KB and 80KB
+      const blob = await compressToTarget(canvas, 40, 80);
+      if (!blob) {
+        isProcessing = false;
+        return;
+      }
 
-        // 5. Generate filename: prod_YYYYMMDD_HHMMSS.jpg
-        const now = new Date();
-        const pad = (n) => String(n).padStart(2, '0');
-        const timestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-        const fileName = `prod_${timestamp}.jpg`;
+      const sizeInKB = Math.round(blob.size / 1024);
 
-        // Create Blob Object URL
-        const objectUrl = URL.createObjectURL(blob);
+      // 4. Clean timestamp filename
+      const now = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      const filename = `prod_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.jpg`;
 
-        // Silent programmatic background save
-        const downloadAnchor = document.createElement('a');
-        downloadAnchor.href = objectUrl;
-        downloadAnchor.download = fileName;
-        document.body.appendChild(downloadAnchor);
-        downloadAnchor.click();
-        document.body.removeChild(downloadAnchor);
+      // 5. Silent Download
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
 
-        // 6. Push to Gallery Drawer
-        appendThumbnail(objectUrl, fileName);
-
-      }, 'image/jpeg', 0.85);
+      // 6. Push to drawer with size badge
+      appendThumbnail(objectUrl, filename, sizeInKB);
+      isProcessing = false;
     }
 
-    // Add captured image to the bottom review drawer
-    function appendThumbnail(url, title) {
+    function appendThumbnail(url, title, sizeInKB) {
       captureCount++;
       drawerCount.textContent = `Captured Session (${captureCount})`;
 
@@ -419,14 +438,16 @@
       img.src = url;
       img.alt = title;
 
+      const tag = document.createElement('div');
+      tag.className = 'thumb-size-tag';
+      tag.textContent = `${sizeInKB} KB`;
+
       wrap.appendChild(img);
-      galleryDrawer.prepend(wrap); // Newest items first
+      wrap.appendChild(tag);
+      galleryDrawer.prepend(wrap);
     }
 
-    // Attach Shutter Click
     shutterBtn.addEventListener('click', captureProductPhoto);
-
-    // Boot camera on load
     window.addEventListener('DOMContentLoaded', initCamera);
   })();
 </script>
