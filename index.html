@@ -189,7 +189,7 @@
       border-radius: 8px;
       overflow: hidden;
       border: 2px solid rgba(255, 255, 255, 0.3);
-      background: #111;
+      background: #ffffff;
       position: relative;
     }
 
@@ -336,14 +336,12 @@
       }
     }
 
-    // Helper to get a Blob promise for a specific quality
     function canvasToBlobAsync(canvas, quality) {
       return new Promise((resolve) => {
         canvas.toBlob((blob) => resolve(blob), 'image/jpeg', quality);
       });
     }
 
-    // Binary search compression loop to hit 40KB - 80KB target
     async function compressToTarget(canvas, minKB = 40, maxKB = 80) {
       const minBytes = minKB * 1024;
       const maxBytes = maxKB * 1024;
@@ -352,7 +350,6 @@
       let high = 0.90;
       let bestBlob = null;
 
-      // 6 quick iterations dial in the file size
       for (let i = 0; i < 6; i++) {
         const testQuality = (low + high) / 2;
         const blob = await canvasToBlobAsync(canvas, testQuality);
@@ -360,46 +357,128 @@
 
         bestBlob = blob;
 
-        // If inside 40KB - 80KB range, stop immediately
         if (blob.size >= minBytes && blob.size <= maxBytes) {
           return blob;
         }
 
         if (blob.size > maxBytes) {
-          high = testQuality; // Too large -> reduce quality
+          high = testQuality;
         } else {
-          low = testQuality;  // Too small -> increase quality
+          low = testQuality;
         }
       }
 
       return bestBlob;
     }
 
+    // --- UNIVERSAL BORDER-FLOOD ISOLATION ALGORITHM ---
+    function applyUniversalWhiteBackground(ctx, width, height) {
+      const imgData = ctx.getImageData(0, 0, width, height);
+      const data = imgData.data;
+      
+      // Track visited pixels
+      const visited = new Uint8Array(width * height);
+      
+      // Color matching threshold - higher handles shadows, lower protects edges
+      const tolerance = 45; 
+
+      // Gather sample color profiles from the 4 corners
+      function getPixel(x, y) {
+        const idx = (y * width + x) * 4;
+        return { r: data[idx], g: data[idx+1], b: data[idx+2] };
+      }
+
+      const corners = [
+        getPixel(0, 0),
+        getPixel(width - 1, 0),
+        getPixel(0, height - 1),
+        getPixel(width - 1, height - 1)
+      ];
+
+      // Check if a pixel matches any background corner profile
+      function isBackgroundShade(x, y) {
+        const idx = (y * width + x) * 4;
+        const r = data[idx];
+        const g = data[idx+1];
+        const b = data[idx+2];
+
+        for (let i = 0; i < corners.length; i++) {
+          const dist = Math.sqrt(
+            Math.pow(r - corners[i].r, 2) +
+            Math.pow(g - corners[i].g, 2) +
+            Math.pow(b - corners[i].b, 2)
+          );
+          if (dist < tolerance) return true;
+        }
+        return false;
+      }
+
+      // Stack-based boundary flood fill starting from all 4 borders inward
+      const queue = [];
+
+      // Initialize with outermost perimeter pixels
+      for (let x = 0; x < width; x++) {
+        queue.push({x, y: 0});
+        queue.push({x, y: height - 1});
+      }
+      for (let y = 1; y < height - 1; y++) {
+        queue.push({x: 0, y});
+        queue.push({x: width - 1, y});
+      }
+
+      // Fast flood-fill traversal (O(1) pop prevents mobile memory freezes)
+      while (queue.length > 0) {
+        const curr = queue.pop();
+        const vIdx = curr.y * width + curr.x;
+
+        if (visited[vIdx]) continue;
+        visited[vIdx] = 1;
+
+        if (isBackgroundShade(curr.x, curr.y)) {
+          // Convert background pixel to pure white
+          const dIdx = vIdx * 4;
+          data[dIdx]     = 255;
+          data[dIdx + 1] = 255;
+          data[dIdx + 2] = 255;
+
+          // Spread to 4 adjacent neighbor pixels
+          if (curr.x > 0 && !visited[vIdx - 1]) queue.push({x: curr.x - 1, y: curr.y});
+          if (curr.x < width - 1 && !visited[vIdx + 1]) queue.push({x: curr.x + 1, y: curr.y});
+          if (curr.y > 0 && !visited[vIdx - width]) queue.push({x: curr.x, y: curr.y - 1});
+          if (curr.y < height - 1 && !visited[vIdx + width]) queue.push({x: curr.x, y: curr.y + 1});
+        }
+      }
+
+      // Paint clean isolated frame back onto canvas
+      ctx.putImageData(imgData, 0, 0);
+    }
+
     async function captureProductPhoto() {
       if (isProcessing || !video.videoWidth || !video.videoHeight) return;
       isProcessing = true;
 
-      // Haptic feedback & flash
       if (navigator.vibrate) navigator.vibrate(40);
       flashOverlay.style.opacity = '0.9';
       setTimeout(() => { flashOverlay.style.opacity = '0'; }, 120);
 
-      // 1. Off-screen canvas locked at 1000x1000
       const canvas = document.createElement('canvas');
       canvas.width = 1000;
       canvas.height = 1000;
       const ctx = canvas.getContext('2d', { alpha: false });
 
-      // 2. Exact 1:1 Center Crop
       const vw = video.videoWidth;
       const vh = video.videoHeight;
       const cropSize = Math.min(vw, vh);
       const sx = (vw - cropSize) / 2;
       const sy = (vh - cropSize) / 2;
 
+      // 1. Capture original sensor frame data
       ctx.drawImage(video, sx, sy, cropSize, cropSize, 0, 0, 1000, 1000);
 
-      // 3. Auto-compress strictly between 40KB and 80KB
+      // 2. Universally strip outside background shades, leaving the central product perfectly intact
+      applyUniversalWhiteBackground(ctx, 1000, 1000);
+
+      // 3. Compress output to exact target window
       const blob = await compressToTarget(canvas, 40, 80);
       if (!blob) {
         isProcessing = false;
@@ -408,12 +487,10 @@
 
       const sizeInKB = Math.round(blob.size / 1024);
 
-      // 4. Clean timestamp filename
       const now = new Date();
       const pad = (n) => String(n).padStart(2, '0');
       const filename = `prod_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.jpg`;
 
-      // 5. Silent Download
       const objectUrl = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = objectUrl;
@@ -422,7 +499,6 @@
       anchor.click();
       document.body.removeChild(anchor);
 
-      // 6. Push to drawer with size badge
       appendThumbnail(objectUrl, filename, sizeInKB);
       isProcessing = false;
     }
@@ -452,4 +528,4 @@
   })();
 </script>
 </body>
-        </html>
+</html>
