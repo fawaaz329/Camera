@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>E-Commerce Product Camera</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body, html {
+      width: 100%;
+      height: 100%;
+      background-color: #000;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      overflow: hidden;
+    }
+
+    #app {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      overflow: hidden;
+    }
+
+    /* Video Feed */
+    #video-container {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* Square Frame Overlay */
+    #overlay-mask {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .reticle-box {
+      width: 82vw;
+      max-width: 400px;
+      aspect-ratio: 1 / 1;
+      position: relative;
+      box-shadow: 0 0 0 4000px rgba(0, 0, 0, 0.65);
+      border-radius: 4px;
+    }
+
+    .corner {
+      position: absolute;
+      width: 22px;
+      height: 22px;
+      border-color: #00e5ff;
+      border-style: solid;
+      pointer-events: none;
+    }
+    .top-left { top: -2px; left: -2px; border-width: 3px 0 0 3px; }
+    .top-right { top: -2px; right: -2px; border-width: 3px 3px 0 0; }
+    .bottom-left { bottom: -2px; left: -2px; border-width: 0 0 3px 3px; }
+    .bottom-right { bottom: -2px; right: -2px; border-width: 0 3px 3px 0; }
+
+    /* Top Bar */
+    .top-bar {
+      position: relative;
+      z-index: 3;
+      padding: 16px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: linear-gradient(180deg, rgba(0,0,0,0.7) 0%, transparent 100%);
+    }
+
+    .badge {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(8px);
+      padding: 4px 10px;
+      border-radius: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .badge-target {
+      color: #00e5ff;
+      border-color: rgba(0, 229, 255, 0.4);
+    }
+
+    /* Controls & Bottom UI */
+    .bottom-controls {
+      position: relative;
+      z-index: 3;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background: linear-gradient(0deg, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 70%, transparent 100%);
+      padding-bottom: env(safe-area-inset-bottom, 16px);
+    }
+
+    .shutter-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px 0;
+    }
+
+    .shutter-btn {
+      width: 74px;
+      height: 74px;
+      border-radius: 50%;
+      border: 4px solid #ffffff;
+      background: transparent;
+      padding: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      outline: none;
+      -webkit-tap-highlight-color: transparent;
+      transition: transform 0.08s ease;
+    }
+
+    .shutter-btn:active {
+      transform: scale(0.92);
+    }
+
+    .shutter-btn-inner {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background-color: #ffffff;
+    }
+
+    /* Gallery Preview Drawer */
+    .drawer-container {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 0 16px;
+    }
+
+    .drawer-label {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.6);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .gallery-drawer {
+      display: flex;
+      overflow-x: auto;
+      gap: 10px;
+      padding: 4px 2px 8px 2px;
+      scrollbar-width: none;
+    }
+    .gallery-drawer::-webkit-scrollbar {
+      display: none;
+    }
+
+    .thumb-wrap {
+      flex: 0 0 68px;
+      height: 68px;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      background: #111;
+      position: relative;
+    }
+
+    .thumb-wrap img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .thumb-size-tag {
+      position: absolute;
+      bottom: 2px;
+      left: 2px;
+      right: 2px;
+      background: rgba(0, 0, 0, 0.75);
+      color: #00e5ff;
+      font-size: 9px;
+      font-weight: 700;
+      text-align: center;
+      border-radius: 4px;
+      padding: 1px 0;
+    }
+
+    /* Flash Feedback */
+    #flash-overlay {
+      position: absolute;
+      inset: 0;
+      background: #fff;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 10;
+      transition: opacity 0.15s ease-out;
+    }
+
+    /* Error Notification */
+    #error-modal {
+      display: none;
+      position: absolute;
+      inset: 20px;
+      margin: auto;
+      height: fit-content;
+      max-width: 480px;
+      background: #1a1a1a;
+      border: 1px solid #ff4444;
+      border-radius: 12px;
+      padding: 20px;
+      z-index: 99;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    #error-modal h3 {
+      color: #ff5252;
+      margin-bottom: 8px;
+    }
+  </style>
+</head>
+<body>
+
+<div id="app">
+  <div id="video-container">
+    <video id="camera-stream" autoplay playsinline muted></video>
+  </div>
+
+  <div id="overlay-mask">
+    <div class="reticle-box">
+      <span class="corner top-left"></span>
+      <span class="corner top-right"></span>
+      <span class="corner bottom-left"></span>
+      <span class="corner bottom-right"></span>
+    </div>
+  </div>
+
+  <div class="top-bar">
+    <span class="badge">1000 &times; 1000</span>
+    <span class="badge badge-target">Target: 40KB - 80KB</span>
+  </div>
+
+  <div class="bottom-controls">
+    <div class="drawer-container">
+      <span class="drawer-label" id="drawer-count">Captured Session (0)</span>
+      <div class="gallery-drawer" id="gallery-drawer"></div>
+    </div>
+
+    <div class="shutter-row">
+      <button class="shutter-btn" id="shutter-trigger" aria-label="Capture Photo">
+        <div class="shutter-btn-inner"></div>
+      </button>
+    </div>
+  </div>
+
+  <div id="flash-overlay"></div>
+
+  <div id="error-modal">
+    <h3 id="error-title">Error</h3>
+    <p id="error-desc"></p>
+  </div>
+</div>
+
+<script>
+  (function () {
+    const video = document.getElementById('camera-stream');
+    const shutterBtn = document.getElementById('shutter-trigger');
+    const galleryDrawer = document.getElementById('gallery-drawer');
+    const drawerCount = document.getElementById('drawer-count');
+    const flashOverlay = document.getElementById('flash-overlay');
+    const errorModal = document.getElementById('error-modal');
+    const errorTitle = document.getElementById('error-title');
+    const errorDesc = document.getElementById('error-desc');
+
+    let captureCount = 0;
+    let isProcessing = false;
+
+    function showError(title, message) {
+      errorTitle.innerHTML = title;
+      errorDesc.innerHTML = message;
+      errorModal.style.display = 'block';
+    }
+
+    async function initCamera() {
+      const constraints = {
+        audio: false,
+        video: {
+          facingMode: { exact: "environment" },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
+        }
+      };
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        video.srcObject = stream;
+      } catch (err) {
+        try {
+          const fallbackStream = await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: { facingMode: "environment" }
+          });
+          video.srcObject = fallbackStream;
+        } catch (fallbackErr) {
+          showError('Camera Error', 'Could not open camera: ' + fallbackErr.message);
+        }
+      }
+    }
+
+    // Helper to get a Blob promise for a specific quality
+    function canvasToBlobAsync(canvas, quality) {
+      return new Promise((resolve) => {
+        canvas.toBlob((blob) => resolve(blob), 'image/jpeg', quality);
+      });
+    }
+
+    // Binary search compression loop to hit 40KB - 80KB target
+    async function compressToTarget(canvas, minKB = 40, maxKB = 80) {
+      const minBytes = minKB * 1024;
+      const maxBytes = maxKB * 1024;
+
+      let low = 0.05;
+      let high = 0.90;
+      let bestBlob = null;
+
+      // 6 quick iterations dial in the file size
+      for (let i = 0; i < 6; i++) {
+        const testQuality = (low + high) / 2;
+        const blob = await canvasToBlobAsync(canvas, testQuality);
+        if (!blob) break;
+
+        bestBlob = blob;
+
+        // If inside 40KB - 80KB range, stop immediately
+        if (blob.size >= minBytes && blob.size <= maxBytes) {
+          return blob;
+        }
+
+        if (blob.size > maxBytes) {
+          high = testQuality; // Too large -> reduce quality
+        } else {
+          low = testQuality;  // Too small -> increase quality
+        }
+      }
+
+      return bestBlob;
+    }
+
+    async function captureProductPhoto() {
+      if (isProcessing || !video.videoWidth || !video.videoHeight) return;
+      isProcessing = true;
+
+      // Haptic feedback & flash
+      if (navigator.vibrate) navigator.vibrate(40);
+      flashOverlay.style.opacity = '0.9';
+      setTimeout(() => { flashOverlay.style.opacity = '0'; }, 120);
+
+      // 1. Off-screen canvas locked at 1000x1000
+      const canvas = document.createElement('canvas');
+      canvas.width = 1000;
+      canvas.height = 1000;
+      const ctx = canvas.getContext('2d', { alpha: false });
+
+      // 2. Exact 1:1 Center Crop
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      const cropSize = Math.min(vw, vh);
+      const sx = (vw - cropSize) / 2;
+      const sy = (vh - cropSize) / 2;
+
+      ctx.drawImage(video, sx, sy, cropSize, cropSize, 0, 0, 1000, 1000);
+
+      // 3. Auto-compress strictly between 40KB and 80KB
+      const blob = await compressToTarget(canvas, 40, 80);
+      if (!blob) {
+        isProcessing = false;
+        return;
+      }
+
+      const sizeInKB = Math.round(blob.size / 1024);
+
+      // 4. Clean timestamp filename
+      const now = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      const filename = `prod_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.jpg`;
+
+      // 5. Silent Download
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+
+      // 6. Push to drawer with size badge
+      appendThumbnail(objectUrl, filename, sizeInKB);
+      isProcessing = false;
+    }
+
+    function appendThumbnail(url, title, sizeInKB) {
+      captureCount++;
+      drawerCount.textContent = `Captured Session (${captureCount})`;
+
+      const wrap = document.createElement('div');
+      wrap.className = 'thumb-wrap';
+
+      const img = document.createElement('img');
+      img.src = url;
+      img.alt = title;
+
+      const tag = document.createElement('div');
+      tag.className = 'thumb-size-tag';
+      tag.textContent = `${sizeInKB} KB`;
+
+      wrap.appendChild(img);
+      wrap.appendChild(tag);
+      galleryDrawer.prepend(wrap);
+    }
+
+    shutterBtn.addEventListener('click', captureProductPhoto);
+    window.addEventListener('DOMContentLoaded', initCamera);
+  })();
+</script>
+</body>
+        </html>
